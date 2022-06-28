@@ -1,0 +1,113 @@
+SELECT *
+FROM coviddeath
+WHERE continent is not null
+ORDER BY 3,4;
+
+SELECT *
+FROM covidvaccination
+WHERE continent is not null
+ORDER BY 3,4;
+
+-- Total cases vs total deaths
+-- Percentage of death if you contract COVID in each country
+SELECT location, date, total_cases, total_deaths, (total_deaths/total_cases)*100 AS death_percentage
+FROM coviddeath
+WHERE continent is not null
+ORDER BY 1,2;
+
+-- Total cases vs population
+-- Percentage of population that got COVID
+
+SELECT location, date, population, total_cases, (total_cases/population)*100 AS percent_population_infected
+FROM coviddeath
+WHERE continent is not null
+ORDER BY 1,2;
+
+-- Countries with highest infection rate compared to population
+
+SELECT location, population, MAX(total_cases) AS highest_infection_count, (MAX(total_cases)/population)*100 AS percent_population_infected
+FROM coviddeath
+WHERE continent is not null
+GROUP BY location, population
+ORDER BY percent_population_infected DESC;
+
+-- Countries with highest death count 
+
+SELECT location, MAX(total_deaths) AS total_death_count
+FROM coviddeath
+WHERE continent is not null
+GROUP BY location
+ORDER BY total_death_count DESC;
+
+-- Continents with the highest death counts
+
+SELECT continent, MAX(total_deaths) AS total_death_count
+FROM coviddeath
+WHERE continent is not null
+GROUP BY continent
+ORDER BY total_death_count DESC;
+
+-- Global numbers
+
+SELECT SUM(new_cases) AS total_cases, SUM(new_deaths) AS total_deaths, SUM(new_deaths)/SUM(new_cases)*100 AS death_percentage
+FROM coviddeath
+WHERE continent is not null
+ORDER BY 1,2;
+
+-- Total population vs vaccinations
+-- Percentage of population who has received at least one COVID vaccine
+
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations, SUM(vac.new_vaccinations) OVER (partition by dea.location order by dea.location, dea.date) AS rolling_people_vacc
+FROM coviddeath dea
+JOIN covidvaccination vac
+ON dea.location = vac.location AND dea.date = vac.date
+WHERE dea.continent is not null
+ORDER BY 2,3;
+
+-- CTE to calculate percentage of population vaccinated
+WITH PopvsVac (continent, location, date, population, new_vaccinations, rolling_people_vacc) 
+AS
+(
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations, SUM(vac.new_vaccinations) OVER (partition by dea.location order by dea.location, dea.date) AS rolling_people_vacc
+FROM coviddeath dea
+JOIN covidvaccination vac
+ON dea.location = vac.location AND dea.date = vac.date
+WHERE dea.continent is not null
+ORDER BY 2,3)
+SELECT *, (rolling_people_vacc/population)*100
+FROM PopvsVac;
+
+-- Create temp table to calculate percentage of population vaccinated
+
+DROP TABLE if exists PercentPopulationVaccinated;
+CREATE TABLE PercentPopulationVaccinated
+(
+continent VARCHAR(50),
+location VARCHAR(50),
+date DATE,
+population NUMERIC,
+new_vaccinations NUMERIC,
+rolling_people_vaccinated NUMERIC
+);
+
+INSERT INTO PercentPopulationVaccinated
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations, SUM(vac.new_vaccinations) OVER (PARTITION BY dea.location, dea.date) AS rolling_people_vaccinated
+FROM coviddeath dea
+JOIN covidvaccination vac
+ON dea.location = vac.location AND dea.date = vac.date;
+
+SELECT *, (rolling_people_vaccinated/population)*100 AS percent_population_vaccinated
+FROM PercentPopulationVaccinated;
+
+-- Create view for rolling population vaccinated
+
+CREATE VIEW RollingPopulationVaccinated AS
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations, SUM(vac.new_vaccinations) OVER (partition by dea.location order by dea.location, dea.date) AS rolling_people_vacc
+FROM coviddeath dea
+JOIN covidvaccination vac
+ON dea.location = vac.location AND dea.date = vac.date
+WHERE dea.continent is not null
+ORDER BY 2,3;
+
+Select *
+From RollingPopulationVaccinated;
